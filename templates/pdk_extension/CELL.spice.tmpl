@@ -1,0 +1,13 @@
+* ================================================================
+*  $cell -- the hand-designed transistor implementation (design $design)
+*
+*  The source of truth for LVS: connectivity and device sizes.  Ports in
+*  the gold model's order, then VDD VSS.  sg13_lv_nmos / sg13_lv_pmos.
+* ================================================================
+.subckt $cell A B Y VDD VSS
+* TODO: the devices, e.g. a NAND2
+XMN0 Y A n1 VSS sg13_lv_nmos w=0.74u l=0.13u ng=1
+XMN1 n1 B VSS VSS sg13_lv_nmos w=0.74u l=0.13u ng=1
+XMP0 Y A VDD VDD sg13_lv_pmos w=1.12u l=0.13u ng=1
+XMP1 Y B VDD VDD sg13_lv_pmos w=1.12u l=0.13u ng=1
+.ends $cell

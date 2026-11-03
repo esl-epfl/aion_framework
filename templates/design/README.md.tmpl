@@ -1,0 +1,21 @@
+# $name
+
+```
+design.toml               top, language, sources, testbench, agent, flow knobs
+src/rtl/                  the RTL ($language)
+tb/test_$top.py           cocotb testbench (RTL and every netlist)
+constraints/$top.sdc      timing constraints
+librelane/config.json     LibreLane template (+ per-mode overlays)
+pdk_extension/            hand-designed cells for this design (git-ignored)
+```
+
+```bash
+make sim       DESIGN=$name                 # RTL testbench
+make config    DESIGN=$name                 # every setting, resolved
+make flow      DESIGN=$name                 # all nine steps
+make flow      DESIGN=$name STEP=2..5       # some of them
+make status    DESIGN=$name                 # is the run coherent?
+make artifacts DESIGN=$name                 # what the runs produced
+```
+
+Everything the flow produces lands in `runs/$name/<tag>/`.

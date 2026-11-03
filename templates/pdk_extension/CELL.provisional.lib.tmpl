@@ -1,0 +1,25 @@
+/* ================================================================
+ * $cell -- PROVISIONAL Liberty: an area estimate for the mapper, used
+ * only with EXT_PROVISIONAL=1 until `make ext-build` publishes a measured
+ * one.  Area = sites x 0.48 um x 3.78 um, from FLOORPLAN.md.  Timing is
+ * absent until the cell is characterized, so the mapper chooses on area.
+ * One `cell (...) { }` block; merge_lib splices it into the PDK library.
+ * Keep one attribute per line: the parsers downstream read it that way.
+ * ================================================================ */
+library ($cell) {
+  cell ($cell) {
+    area : 7.2576;
+    pin (A) {
+      direction : input;
+      capacitance : 0.003;
+    }
+    pin (B) {
+      direction : input;
+      capacitance : 0.003;
+    }
+    pin (Y) {
+      direction : output;
+      function : "!(A&B)";
+    }
+  }
+}

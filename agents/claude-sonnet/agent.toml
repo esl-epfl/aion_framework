@@ -1,0 +1,6 @@
+# A cheaper drawer.  A turn costs a container DRC/LVS round trip whoever
+# writes the generator, so a weaker model mostly buys more turns.
+extends = "claude-opus"
+description = "Sonnet at high effort, more turns -- cheaper, slower to converge"
+model = "claude-sonnet-5-5"
+max_turns = 16

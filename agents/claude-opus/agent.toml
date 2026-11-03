@@ -1,0 +1,36 @@
+# ================================================================
+#  claude-opus -- the default drawing agent
+#
+#  Every key below is optional; leave one out for the framework default.
+#  Another profile can `extends = "claude-opus"` and change only what differs.
+#  Override any key for one run:  make flow ... AGENT_SET="effort=max max_turns=20"
+# ================================================================
+
+description = "Claude Code, Opus at high effort -- the default for mined cells"
+backend = "claude-code"           # the only backend for now
+
+model = "claude-opus-5-5"         # omit to use the CLI's own default
+effort = "high"                   # low | medium | high | xhigh | max
+
+# Budget, per cell.  A turn is one `claude -p` session: edit, verify, read
+# the evidence, edit again -- each verify is a container DRC/LVS round trip.
+max_turns = 12
+turn_timeout = 1800               # seconds per session
+idle_turns_abort = 2              # generator untouched this many turns: stop
+# max_usd_per_turn = 5.0          # --max-budget-usd for each session
+# max_usd_per_cell = 30.0         # the loop stops once a cell has cost this
+
+# What the session may do.  It edits ONE file (the generator) and runs the
+# layout tool's make targets; the prompt says so and these enforce it.
+permission_mode = "acceptEdits"
+allowed_tools = ["Read", "Edit", "Write", "Glob", "Grep",
+                 "Bash(make:*)", "Bash(python3:*)", "Bash(sed:*)", "Bash(cat:*)"]
+disallowed_tools = []
+
+# Only this profile's settings.json, skills/ and CLAUDE.md apply -- nothing
+# from ~/.claude -- so the agent is the same on every machine and every run.
+setting_sources = "project"
+
+stream = true                     # narrate each session while it runs
+extra_args = []                   # appended to every `claude -p`
+# [env]                           # extra environment for the session

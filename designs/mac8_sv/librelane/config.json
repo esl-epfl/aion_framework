@@ -1,0 +1,66 @@
+{
+  "//": [
+    "mac8_sv -- LibreLane base configuration.",
+    "",
+    "Never handed to LibreLane as is. For every run the AION flow writes",
+    "runs/mac8_sv/<tag>/librelane/<mode>/config.json from it, adding:",
+    "  DESIGN_NAME, the sources (VHDL_FILES or VERILOG_FILES, USE_SLANG for SV),",
+    "  PNR_SDC_FILE/SIGNOFF_SDC_FILE, the pin order or DEF template,",
+    "  CELL_LIBS (synthesis, with this design's PDK-extension cells),",
+    "  EXTRA_* views (PnR, with the drawn AION cells).",
+    "Then it merges _modes[<mode>] on top, and _modes.lenient with LENIENT=1.",
+    "Keys starting with // are comments.",
+    "",
+    "Modes: synth (synthesis + pre-PnR STA), pnr (from the rewritten netlist),",
+    "baseline (RTL -> GDS with the PDK cells only: the control).",
+    "",
+    "FP_SIZING is absolute so the die is pinned: the AION run and the baseline",
+    "must be hardened on the same die for step 9 to compare them at all."
+  ],
+
+  "CLOCK_PORT": "clk",
+  "CLOCK_PERIOD": 25,
+
+  "FP_SIZING": "absolute",
+  "DIE_AREA": [0, 0, 150, 150],
+  "PL_TARGET_DENSITY_PCT": 50,
+
+  "SYNTH_STRATEGY": "AREA 0",
+  "SYNTH_ABC_BUFFERING": false,
+
+  "RUN_HEURISTIC_DIODE_INSERTION": false,
+
+  "TIMING_VIOLATION_CORNERS": ["*"],
+  "SETUP_VIOLATION_CORNERS": ["*"],
+  "HOLD_VIOLATION_CORNERS": ["*"],
+  "MAX_SLEW_VIOLATION_CORNERS": ["*"],
+  "MAX_CAP_VIOLATION_CORNERS": ["*"],
+
+  "_modes": {
+    "synth": {},
+    "pnr": {
+      "//": "RSZ_DONT_TOUCH_RX stays at its default: marking the AION instances don't-touch stops the resizer buffering any high-fanout net that feeds one (RSZ-3006)."
+    },
+    "baseline": {},
+    "lenient": {
+      "ERROR_ON_TR_DRC": false,
+      "ERROR_ON_DISCONNECTED_PINS": false,
+      "ERROR_ON_LONG_WIRE": false,
+      "ERROR_ON_PDN_VIOLATIONS": false,
+      "ERROR_ON_SYNTH_CHECKS": false,
+      "ERROR_ON_UNMAPPED_CELLS": false,
+      "ERRORS_ON_UNMATCHED_IO": "none",
+      "ERROR_ON_MAGIC_DRC": false,
+      "ERROR_ON_KLAYOUT_DRC": false,
+      "ERROR_ON_ILLEGAL_OVERLAPS": false,
+      "ERROR_ON_XOR_ERROR": false,
+      "ERROR_ON_LVS_ERROR": false,
+      "TIMING_VIOLATION_CORNERS": [],
+      "SETUP_VIOLATION_CORNERS": [],
+      "HOLD_VIOLATION_CORNERS": [],
+      "MAX_SLEW_VIOLATION_CORNERS": [],
+      "MAX_CAP_VIOLATION_CORNERS": [],
+      "GRT_ALLOW_CONGESTION": true
+    }
+  }
+}

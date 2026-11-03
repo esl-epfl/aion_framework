@@ -1,0 +1,8 @@
+# Hand-designed PDK-extension cells: pass gates, folded stacks, an authored
+# floorplan to implement.  Same prompts, skill and hooks as claude-opus; it
+# thinks harder and gets longer sessions.
+#   make ext-build DESIGN=<d> CELL=<c> AGENT=claude-opus-max
+extends = "claude-opus"
+description = "Opus at max effort, long sessions -- for PDK-extension cells"
+effort = "max"
+turn_timeout = 8400

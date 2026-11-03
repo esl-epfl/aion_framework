@@ -1,0 +1,54 @@
+# ================================================================
+#  IHP SG13G2 130 nm -- what the AION flow needs to know about it
+#
+#  Every design on this PDK reads its shared standard-cell views from the
+#  paths below (relative to the framework root).  The cells the flow mines
+#  and draws are shared the same way, under library/ihp-sg13g2/.
+# ================================================================
+
+name = "ihp-sg13g2"
+std_cell_library = "sg13g2_stdcell"
+
+# The timing corners every Liberty -- the PDK's and every drawn cell's -- is
+# split into.  LibreLane times the design at nom_<corner> for each.
+corners = ["typ_1p20V_25C", "fast_1p32V_m40C", "slow_1p08V_125C"]
+typ_corner = "typ_1p20V_25C"
+
+# CoreSite.  A cell's width is a whole number of sites.
+site_width_um = 0.48
+row_height_um = 3.78
+
+[paths]
+tech_dict = "aion_flow/tech/tech_dict/sg13g2_stdcell.json"
+lib_dir = "aion_flow/tech/lib"                    # <std_cell_library>_<corner>.lib
+spice = "aion_flow/tech/spice/sg13g2_stdcell.spice"
+# Gate-level models: with specify blocks (Icarus, SDF back-annotation) ...
+verilog_models = ["aion_flow/tech/rtl/sg13g2_stdcell.v", "aion_flow/tech/rtl/sg13g2_udp.v"]
+# ... and without (Verilator, which refuses most of what the timing models hold).
+verilog_models_nodelay = ["pdks/ihp-sg13g2/rtl/sg13g2_stdcell_nodelay.v",
+                          "pdks/ihp-sg13g2/rtl/sg13g2_udp_nodelay.v"]
+
+[ext]
+# The NON-INVERTING cell every input of a PDK-extension cell is driven
+# through while its Liberty is measured.  An ideal ramp is a zero-impedance
+# driver, which flatters any cell with a pass gate on an input path.
+driver_cell = "sg13g2_buf_2"
+
+# CELL_LIBS exactly as ihp-sg13g2 declares it for LibreLane
+# (libs.tech/librelane/config.tcl): per corner, the standard cells first --
+# the IR-drop step reads the supply off the first library -- then the I/O.
+# LibreLane replaces CELL_LIBS wholesale, so it is restated whenever a drawn
+# cell brings a Liberty per corner.
+[librelane.cell_libs]
+typ_1p20V_25C = [
+    "pdk_dir::libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_typ_1p20V_25C.lib",
+    "pdk_dir::libs.ref/sg13g2_io/lib/sg13g2_io_typ_1p2V_3p3V_25C.lib",
+]
+fast_1p32V_m40C = [
+    "pdk_dir::libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_fast_1p32V_m40C.lib",
+    "pdk_dir::libs.ref/sg13g2_io/lib/sg13g2_io_fast_1p32V_3p6V_m40C.lib",
+]
+slow_1p08V_125C = [
+    "pdk_dir::libs.ref/sg13g2_stdcell/lib/sg13g2_stdcell_slow_1p08V_125C.lib",
+    "pdk_dir::libs.ref/sg13g2_io/lib/sg13g2_io_slow_1p08V_3p0V_125C.lib",
+]

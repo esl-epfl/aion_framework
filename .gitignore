@@ -1,0 +1,26 @@
+# ================================================================
+#  Authored, tracked: aion/ agents/ designs/ pdks/ templates/ tests/
+#  Derived or published, never tracked (git add -f to keep one by hand):
+# ================================================================
+
+# Every run's output: runs/<design>/<tag>/
+runs/
+
+# The shared library of drawn cells: generators, published views, registry.
+library/
+
+# Hand-designed PDK-extension cells, per design -- sources AND views.
+designs/*/pdk_extension/
+
+# Machine-specific settings.
+aion.local.toml
+
+# Python / tools
+__pycache__/
+*.pyc
+.pytest_cache/
+sim_build/
+*.fst
+*.vcd
+*.ghw
+results.xml

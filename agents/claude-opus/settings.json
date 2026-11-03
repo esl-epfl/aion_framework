@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$PYTHON \"$AION_LAYOUT_TOOL/scripts/hook_cell_check.py\"",
+            "timeout": 90
+          }
+        ]
+      }
+    ]
+  }
+}

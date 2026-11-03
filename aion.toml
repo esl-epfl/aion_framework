@@ -1,0 +1,25 @@
+# ================================================================
+#  AION framework settings -- true for every checkout.
+#  Machine-specific overrides go in aion.local.toml (git-ignored), same keys.
+# ================================================================
+
+[container]
+# The IIC-OSIC-TOOLS container LibreLane, ngspice, magic, netgen, klayout
+# and kepler-formal run in, and where THIS repository is mounted inside it:
+#   docker run ... -v <this checkout>:/foss/designs/aion_framework ...
+name = "iic-osic-tools_shell_uid_1000"
+mount = "/foss/designs/aion_framework"
+pdk_root = "/foss/pdks"
+
+[defaults]
+pdk = "ihp-sg13g2"
+# The drawing agent, unless a design.toml ([layout] agent) or the command
+# line (AGENT=...) says otherwise.  One directory under agents/.
+agent = "claude-opus"
+# Run tag: runs/<design>/<tag>/.  TAG=... on the command line for another.
+tag = "main"
+
+# Flow settings every design starts from.  A design.toml [flow] table
+# overrides these; SET="NAME=VALUE ..." on the command line overrides both.
+# `make config DESIGN=<d>` lists every setting and which layer set it.
+[flow]

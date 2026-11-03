@@ -1,0 +1,40 @@
+-- ================================================================
+--  $top -- starting point: replace with your design.
+--
+--  A registered 8-bit datapath, so the flow has logic to mine out of the
+--  box:  y <= a + b  when sel = '1',  y <= (a and b) xor y  otherwise.
+--  Keep the ports the testbench drives in sync with tb/test_$top.py.
+-- ================================================================
+
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
+
+entity $top is
+  port (
+    $clock_port : in  std_logic;
+    rst_n       : in  std_logic;
+    sel         : in  std_logic;
+    a           : in  std_logic_vector(7 downto 0);
+    b           : in  std_logic_vector(7 downto 0);
+    y           : out std_logic_vector(7 downto 0)
+  );
+end entity;
+
+architecture rtl of $top is
+  signal acc : unsigned(7 downto 0);
+begin
+  process ($clock_port, rst_n)
+  begin
+    if rst_n = '0' then
+      acc <= (others => '0');
+    elsif rising_edge($clock_port) then
+      if sel = '1' then
+        acc <= unsigned(a) + unsigned(b);
+      else
+        acc <= (unsigned(a) and unsigned(b)) xor acc;
+      end if;
+    end if;
+  end process;
+  y <= std_logic_vector(acc);
+end architecture;

@@ -1,0 +1,150 @@
+#!/usr/bin/env python3
+# ================================================================
+#  SPDX-FileCopyrightText:    2026 Filippo Quadri
+#  SPDX-License-Identifier:   Apache-2.0 WITH SHL-2.1
+#  Description:               Splice PDK-extension cells into the technology
+#                             dictionary aion_opt reads
+#
+#  merge_lib.py does this for the *mapper*: the PDK Liberty plus the cells
+#  under implementation/pdk_extension/, in one library block, so ABC may pick
+#  one.  This does the same for *aion_opt*, which does not read Liberty -- it
+#  reads tech/tech_dict/sg13g2_stdcell.json, a flat
+#
+#      {"cells": {<name>: {"area": float,
+#                          "pins": {<pin>: "input"|"output"},
+#                          "function": "<liberty expression>"}}}
+#
+#  Every extension cell is written with "mineable": false as well, so the
+#  miner keeps it a leaf: in the netlist, never inside a mined pattern.
+#
+#  and that file is load-bearing in a way its name does not suggest.
+#  `load_yosys_json()` drops any instance whose cell type is not in it:
+#
+#      if cell_lib is not None and cell_type not in cell_lib:
+#          # Skip blackboxes / macros not present in the tech dictionary.
+#          continue
+#
+#  (aion_flow/tools/aion_opt/aion_opt/io/yosys_json.py).  That is right for a
+#  macro and catastrophic for a standard cell: once `make synth` maps against
+#  the extended Liberty, the netlist instantiates AION_mux2i_1 -- a cell the
+#  base dictionary has never heard of -- and step 3 writes it back out with
+#  every one of those instances silently gone and their output nets left
+#  undriven.  The netlist still elaborates, and every gate-level simulation of
+#  it fails on values that look like logic bugs.
+#
+#  There is a second reason beyond survival.  The Yosys JSON of a netlist
+#  carries no `port_directions` for a module it has no definition of, so
+#  aion_opt takes a blackbox's pin directions from this dictionary too -- it
+#  cannot tell the cell's output from its inputs without it.
+#
+#  So the dictionary is derived from the merged Liberty rather than from the
+#  cells' own files: the one file that says what the mapper actually chose
+#  from is the one the miner and the rewriter have to agree with.
+#
+#      make pdk_ext_lib                    writes both, in that order
+#      scripts/merge_tech_dict.py          just this one, from the typ library
+# ================================================================
+
+from __future__ import annotations
+
+import fnmatch
+import json
+import re
+from pathlib import Path
+
+from merge_lib import cell_blocks, pin_blocks
+
+_AREA = re.compile(r"^\s*area\s*:\s*([-\d.eE+]+)\s*;", re.MULTILINE)
+_DIRECTION = re.compile(r'^\s*direction\s*:\s*"?(\w+)"?\s*;', re.MULTILINE)
+_FUNCTION = re.compile(r'^\s*function\s*:\s*"(.*?)"\s*;', re.MULTILINE | re.DOTALL)
+
+
+def entry(cell_text: str) -> dict:
+    """The dictionary entry for one Liberty `cell (...)` block.
+
+    `function` is copied across verbatim: the dictionary and Liberty use the
+    same expression syntax (`!I2*!I0+I2*!I1`), which is what makes this a
+    transcription rather than a translation.  A cell with several outputs
+    keeps the first one's function, because the dictionary has room for one --
+    the same limitation the base file already lives with.
+    """
+    area = _AREA.search(cell_text)
+    pins: dict = {}
+    function = None
+    for name, block in pin_blocks(cell_text):
+        direction = _DIRECTION.search(block)
+        pins[name] = direction.group(1) if direction else "input"
+        expression = _FUNCTION.search(block)
+        if expression and function is None and pins[name] == "output":
+            function = " ".join(expression.group(1).split())
+
+    info = {"area": float(area.group(1)) if area else 0.0, "pins": pins}
+    if function is not None:
+        info["function"] = function
+    return info
+
+
+def merge(base: dict, lib_text: str) -> "tuple[dict, list[str]]":
+    """Add every cell the Liberty has and the dictionary does not.
+
+    Which is exactly the extension cells: the Liberty this reads is the PDK's
+    own with them spliced in, so anything missing from the dictionary is
+    something merge_lib.py added.  Existing entries are never touched -- the
+    base dictionary is the PDK's own description of its cells and a Liberty
+    re-read is not an improvement on it.
+    """
+    merged = json.loads(json.dumps(base))
+    cells = merged.setdefault("cells", {})
+    added: list = []
+    for name, text in cell_blocks(lib_text):
+        if name in cells:
+            continue
+        # A leaf, never part of a mined pattern: step 5 would rebuild the
+        # pattern from its function as static CMOS, throwing away the very
+        # design the cell exists for (AION_mux2i's transmission gates), and
+        # step 6 has no PDK layout to abut it from.  aion_opt keeps it in the
+        # netlist the way it keeps a flip-flop.
+        cells[name] = {**entry(text), "mineable": False}
+        added.append(name)
+    return merged, added
+
+
+def exclude(base: dict, patterns) -> "tuple[dict, list[str]]":
+    """Mark every cell whose name matches a glob in `patterns` a leaf.
+
+    The same `"mineable": false` merge() gives the extension cells, for PDK
+    cells the miner should leave alone -- step 2's MINE_EXCLUDE.  Matching is
+    on the concrete name (`sg13g2_xor2_1`), and every drive strength that
+    matches is marked, because aion_opt folds strengths onto one key and takes
+    the entry of whichever variant is smallest.
+    """
+    marked = json.loads(json.dumps(base))
+    cells = marked.get("cells", marked)
+    matched = sorted(name for name in cells
+                     if any(fnmatch.fnmatchcase(name, p) for p in patterns))
+    for name in matched:
+        cells[name]["mineable"] = False
+    return marked, matched
+
+
+def exclude_patterns(text: str) -> "list[str]":
+    """MINE_EXCLUDE's comma-separated globs; an empty string is none."""
+    return [p.strip() for p in text.split(",") if p.strip()]
+
+
+def write_excluded(source: Path, patterns, out: Path) -> "tuple[list[str], list[str]]":
+    """Write `source` with `patterns` excluded to `out`: (matched, unmatched).
+
+    Steps 2 and 3 and scripts/explore_cells.py all write their copy through
+    here, so equal inputs give byte-equal files -- aion_opt fingerprints a
+    selection by the dictionary's content, and a sweep's `--emit` is only a
+    cache hit in step 3 if the two agree to the byte.  `unmatched` is the
+    patterns that matched no cell, which is usually a typo.
+    """
+    marked, matched = exclude(json.loads(source.read_text(encoding="utf-8")),
+                              patterns)
+    unmatched = [p for p in patterns
+                 if not any(fnmatch.fnmatchcase(name, p) for name in matched)]
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(marked, indent=2) + "\n", encoding="utf-8")
+    return matched, unmatched

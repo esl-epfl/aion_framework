@@ -1,0 +1,44 @@
+# ================================================================
+#  $name -- design description for the AION framework
+#  Every path is relative to this directory.
+# ================================================================
+
+[design]
+name = "$name"
+top = "$top"                      # top-level module / entity
+language = "$language"            # vhdl | verilog | systemverilog
+pdk = "$pdk"
+
+[sources]
+# In compile order (it matters for VHDL).  Globs expand sorted, in place.
+rtl = ["src/rtl/*$suffix"]
+# include_dirs = ["src/include"]  # Verilog/SV only
+# defines = { SYNTHESIS = 1 }     # Verilog/SV only
+# vhdl_std = "08"                 # VHDL only
+
+[tb]
+# cocotb testbench, tb/<module>.py.  It drives the top-level ports only, so
+# the same file runs on the RTL and on every netlist the flow produces.
+dir = "tb"
+module = "test_$top"
+rtl_sim = "$rtl_sim"              # ghdl | nvc (VHDL), icarus | verilator (Verilog/SV)
+gate_sim = "icarus"               # icarus | verilator  (post-PnR with SDF is always icarus)
+
+[librelane]
+# The LibreLane template the flow builds every run's config.json from, and
+# the timing constraints.  The flow adds the sources, the SDC and the cells.
+config = "librelane/config.json"
+sdc = "constraints/$top.sdc"
+# pin_order = "librelane/pin_order.cfg"
+# def_template = "librelane/template.def"     # fixes die + pins (e.g. TinyTapeout)
+
+[layout]
+# The drawing agent for this design: one directory under agents/.
+# `make flow DESIGN=$name AGENT=<profile>` overrides it for one run.
+$agent_line
+
+[flow]
+# Any flow setting, for this design only (`make config DESIGN=$name` lists them).
+# ELITE_COUNT = 10
+# MAX_SIZE = 2
+# DRAW_JOBS = 2
