@@ -1,0 +1,61 @@
+# ================================================================
+#  cve2 -- design description for the AION framework
+#  Every path is relative to this directory.
+#
+#  The CVE2 (CV32E20) RISC-V core, https://github.com/openhwfoundation/cve2,
+#  vendored unmodified in src/cve2/ (commit in src/cve2/VENDOR.md).  No
+#  memories: both OBI buses are top-level ports and the testbench is the RAM.
+# ================================================================
+
+[design]
+name = "cve2"
+top = "cve2_wrap"                     # top-level module / entity
+language = "systemverilog"            # vhdl | verilog | systemverilog
+pdk = "ihp-sg13g2"
+
+[sources]
+# In compile order: the packages first (compilation units, not `includes),
+# then upstream's RTL, then ours (the wrapper and the clock gate that replaces
+# upstream's simulation-only one).
+rtl = [
+  "src/cve2/rtl/cve2_pkg.sv",
+  "src/cve2/vendor/prim/prim_ram_1p_pkg.sv",
+  "src/cve2/rtl/*.sv",
+  "src/rtl/*.sv",
+]
+# prim_assert.sv, dv_fcov_macros.svh and cve2_pmp_reset_default.svh are
+# `included, never compiled on their own.
+include_dirs = ["src/cve2/rtl", "src/cve2/vendor/prim", "src/cve2/vendor/dv_utils"]
+# No defines: yosys-slang defines SYNTHESIS by itself, and setting it here
+# would also reach the RTL simulation (src/rtl/cve2_clock_gate.sv).
+
+[tb]
+# cocotb testbench, tb/<module>.py.  It drives the top-level ports only, so
+# the same file runs on the RTL and on every netlist the flow produces.
+dir = "tb"
+module = "test_cve2_wrap"
+rtl_sim = "verilator"             # ghdl | nvc (VHDL), icarus | verilator (Verilog/SV)
+gate_sim = "verilator"            # icarus | verilator  (post-PnR with SDF is always icarus)
+
+[librelane]
+# The LibreLane template the flow builds every run's config.json from, and
+# the timing constraints.  The flow adds the sources, the SDC and the cells.
+config = "librelane/config.json"
+sdc = "constraints/cve2_wrap.sdc"
+# pin_order = "librelane/pin_order.cfg"
+# def_template = "librelane/template.def"     # fixes die + pins (e.g. TinyTapeout)
+
+[layout]
+# The drawing agent for this design: one directory under agents/.
+# `make flow DESIGN=cve2 AGENT=<profile>` overrides it for one run.
+# agent = "claude-opus"    # default: aion.toml [defaults] agent
+
+[flow]
+# Any flow setting, for this design only (`make config DESIGN=cve2` lists them).
+# Cells the pattern miner keeps as leaves (globs on the PDK cell name; every
+# drive strength matches).  XOR/XNOR/MUX: a drawn pair of them is no narrower
+# than the PDK cells it replaces.  [] mines every combinational cell.
+MINE_EXCLUDE = ["*xor*", "*xnor*", "*mux*"]
+ELITE_COUNT = 1
+# MAX_SIZE = 2
+# DRAW_JOBS = 2

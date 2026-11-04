@@ -64,9 +64,11 @@ class Config:
     # Every elite cell is a cell step 6 has to draw.
     ELITE_COUNT: Optional[int] = 10
     ELITE_METRIC: str = "occurrences"
-    # Comma-separated globs the miner keeps as leaves.  XOR/XNOR/MUX: a drawn
-    # pair of them is no narrower than the PDK cells it replaces.
-    MINE_EXCLUDE: str = "*xor*,*xnor*,*mux*"
+    # Cell-name globs the miner keeps as leaves: a TOML array or one
+    # comma-separated string.  Chosen per design, in design.toml [flow];
+    # unset, every combinational PDK cell is mined.  (PDK-extension cells are
+    # leaves regardless -- aion/tools/merge_tech_dict.py.)
+    MINE_EXCLUDE: str = ""
 
     # ---- 3_rewrite ------------------------------------------------------
     # elite | all | <path to a hand-curated .v>
@@ -192,6 +194,9 @@ def _coerce(annotation, value):
         return int(value)
     if "float" in text:
         return float(value)
+    if isinstance(value, (list, tuple)):
+        # A TOML array of globs; stored the way --set spells it.
+        return ",".join(str(v).strip() for v in value)
     return str(value)
 
 

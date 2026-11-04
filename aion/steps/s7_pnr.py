@@ -41,7 +41,16 @@ class PnrStep(Step):
                 self.outdir(ctx) / "metrics.json"]
 
     def _wanted(self, ctx: Context) -> set:
-        return instantiated_cells(ctx.ws.netlist("3_rewrite"), ctx.cfg.CELL_PREFIX)
+        """The mined cells the netlist instantiates.
+
+        PDK-extension cells usually share CELL_PREFIX (AION_maj3i_1, ...), so
+        the prefix alone would count them as mined and look for them in the
+        shared library; they are checked against pdk_extension/ instead.
+        """
+        found = instantiated_cells(ctx.ws.netlist("3_rewrite"), ctx.cfg.CELL_PREFIX)
+        if ctx.cfg.PDK_EXT:
+            found -= set(ctx.ws.pdk_ext_cells())
+        return found
 
     # -----------------------------------------------------------------
     def run(self, ctx: Context) -> str:

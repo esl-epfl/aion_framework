@@ -41,6 +41,10 @@ sdc = "constraints/mac8.sdc"
 
 [flow]
 # Any flow setting, for this design only (`make config DESIGN=mac8_sv` lists them).
+# Cells the pattern miner keeps as leaves (globs on the PDK cell name; every
+# drive strength matches).  XOR/XNOR/MUX: a drawn pair of them is no narrower
+# than the PDK cells it replaces.  [] mines every combinational cell.
+MINE_EXCLUDE = ["*xor*", "*xnor*", "*mux*"]
 ELITE_COUNT = 2
 # MAX_SIZE = 2
 # DRAW_JOBS = 2
