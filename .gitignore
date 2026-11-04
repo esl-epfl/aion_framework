@@ -15,6 +15,9 @@ designs/*/pdk_extension/
 # Machine-specific settings.
 aion.local.toml
 
+# nvim
+.nvim/
+
 # Python / tools
 __pycache__/
 *.pyc
