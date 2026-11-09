@@ -1,0 +1,59 @@
+# ================================================================
+#  sha256 -- design description for the AION framework
+#  Every path is relative to this directory.
+#
+#  The secworks SHA-224/SHA-256 core, https://github.com/secworks/sha256,
+#  vendored unmodified in src/sha256/ (commit in src/sha256/VENDOR.md).
+#  The top level is upstream's own sha256: the 32-bit register interface
+#  (cs/we/address/write_data/read_data), so the die has ~75 pins rather
+#  than sha256_core's 512-bit block and 256-bit digest ports.
+# ================================================================
+
+[design]
+name = "sha256"
+top = "sha256"                      # top-level module / entity
+language = "verilog"            # vhdl | verilog | systemverilog
+pdk = "ihp-sg13g2"
+
+[sources]
+# In compile order: the leaf modules first, the top last.
+rtl = [
+  "src/sha256/rtl/sha256_k_constants.v",
+  "src/sha256/rtl/sha256_w_mem.v",
+  "src/sha256/rtl/sha256_core.v",
+  "src/sha256/rtl/sha256.v",
+]
+# include_dirs = ["src/include"]  # Verilog/SV only
+# defines = { SYNTHESIS = 1 }     # Verilog/SV only
+# vhdl_std = "08"                 # VHDL only
+
+[tb]
+# cocotb testbench, tb/<module>.py.  It drives the top-level ports only, so
+# the same file runs on the RTL and on every netlist the flow produces.
+dir = "tb"
+module = "test_sha256"
+rtl_sim = "icarus"              # ghdl | nvc (VHDL), icarus | verilator (Verilog/SV)
+gate_sim = "icarus"               # icarus | verilator  (post-PnR with SDF is always icarus)
+
+[librelane]
+# The LibreLane template the flow builds every run's config.json from, and
+# the timing constraints.  The flow adds the sources, the SDC and the cells.
+config = "librelane/config.json"
+sdc = "constraints/sha256.sdc"
+# pin_order = "librelane/pin_order.cfg"
+# def_template = "librelane/template.def"     # fixes die + pins (e.g. TinyTapeout)
+
+[layout]
+# The drawing agent for this design: one directory under agents/.
+# `make flow DESIGN=sha256 AGENT=<profile>` overrides it for one run.
+# agent = "claude-opus"    # default: aion.toml [defaults] agent
+
+[flow]
+# Any flow setting, for this design only (`make config DESIGN=sha256` lists them).
+# Cells the pattern miner keeps as leaves (globs on the PDK cell name; every
+# drive strength matches).  XOR/XNOR/MUX: a drawn pair of them is no narrower
+# than the PDK cells it replaces.  [] mines every combinational cell.
+MINE_EXCLUDE = ["*xor*", "*xnor*", "*mux*"]
+# ELITE_COUNT = 10
+# MAX_SIZE = 2
+# DRAW_JOBS = 2

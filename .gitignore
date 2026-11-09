@@ -14,6 +14,7 @@ designs/*/pdk_extension/
 
 # Machine-specific settings.
 aion.local.toml
+env.sh
 
 # nvim
 .nvim/
