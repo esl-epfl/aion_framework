@@ -6,8 +6,8 @@ have an agent draw its layout, harden the design with those cells, and measure
 the result against the same design built from PDK cells only.
 
 The tools live in the [`aion_flow`](aion_flow/) submodule (aion_opt,
-aion_char, aion_minimizer, aion_layout). This repository is the driver: it
-knows nothing about any one design, and every design is a directory under
+aion_char, aion_minimizer, aion_layout_claude). This repository is the driver:
+it knows nothing about any one design, and every design is a directory under
 `designs/`.
 
 ```
@@ -42,7 +42,15 @@ make status     DESIGN=alu                      # is the run coherent?
 make artifacts  DESIGN=alu TAG=main             # what it produced, what the agent cost
 ```
 
-`designs/mac8/` is a worked example: an 8x8 multiply-accumulate in VHDL.
+Five designs ship with the framework (`make designs` lists them):
+
+| Design | What | Language |
+|--------|------|----------|
+| `mac8_vhdl` | 8x8 multiply-accumulate: the small worked example | VHDL |
+| `mac8_sv` | the same MAC | SystemVerilog |
+| `sha256` | secworks SHA-224/256 core, register interface | Verilog |
+| `cve2` | CVE2 (CV32E20) RISC-V core, no memories | SystemVerilog |
+| `posit_alu` | the AION Tiny Tapeout chip's Posit ALU (`tt_um_aion`) | VHDL |
 
 ## A design
 
@@ -80,7 +88,7 @@ flow uses unless `design.toml` points elsewhere. For every run the flow writes
 | 6 | `6_layout_drawing` | **the agent** draws each cell; DRC, LVS, PEX, characterize, publish | host + container |
 | 7 | `7_pnr` | harden the rewritten netlist with the drawn cells, SDF simulation | container |
 | 8 | `8_render` | the die, and where the AION cells landed | host |
-| 9 | `9_report` | against the PDK-only baseline (`make baseline`) | host |
+| 9 | `9_report` | against the PDK-only baseline (`make baseline`) | host (+ container to build the baseline) |
 
 `make flow DESIGN=<d> STEP=3`, `STEP=2..5`, `STEP=6-`. Every step reads only
 what it declares and writes only under its own directory; `coherence.json`
@@ -99,6 +107,18 @@ One value per knob, later layers win:
 `make config DESIGN=<d>` prints every setting, its value and the layer that
 set it, plus the agent profile that will be used. Values are type-checked and
 choices validated: `SET=DRAW_MODE=Auto` is an error, not a silent fallback.
+
+### Other targets
+
+| Target | What it does |
+|--------|--------------|
+| `make designs` / `make steps` | list the designs / the nine steps |
+| `make sim DESIGN=<d> STAGE=rtl\|synth\|rewrite\|pnr\|baseline [WAVES=1]` | the testbench on one view |
+| `make baseline DESIGN=<d>` | harden the PDK-only control into `runs/<d>/<tag>/baseline/` |
+| `make test` | framework self-tests (host only, no container) |
+| `make test-layout-tool` | the layout tool's own host-side suite |
+
+`make help` lists every target with its variables.
 
 ## Agents
 
@@ -156,6 +176,7 @@ runs/<design>/<tag>/
   librelane/{synth,pnr,baseline}/ LibreLane's own run directories
   sim/<stage>/                    every testbench run
   pdk_extension/                  this run's extended Liberty + tech dictionary
+  explore/                        `make ext-rank` / `make explore` work and results
   agent/                          the profile as used, and usage.jsonl
   logs/<step>/                    one log per command
 ```
@@ -190,7 +211,12 @@ make flow      DESIGN=<d>                                 # synthesis now maps o
 `ext-build` runs the 3-way SPICE proof, the shared draw loop, post-layout
 characterization, and publishes the views next to the sources once the cell
 wins its comparison (`ACCEPT_DELAY_LOSS=<pct>` for a smaller-but-slower cell).
-`make explore DESIGN=<d> ARGS="sweep --budget 10"` sweeps the mining knobs.
+`FROM=layout|post-layout` resumes a build part-way, `ONLY=publish` re-publishes
+the last verdict. `make ext-lib DESIGN=<d>` splices the design's extension
+cells into its run's Liberty and tech dictionary (step 1 does this by itself;
+`EXT_PROVISIONAL=1` maps cells that are not drawn yet on their provisional
+Liberty). `make explore DESIGN=<d> ARGS="sweep --budget 10"` sweeps the mining
+knobs.
 
 ## The container
 
@@ -215,7 +241,8 @@ containerised step, and says which one is missing.
 
 ## Not ported from aion_chip
 
-TinyTapeout packaging and precheck (aion_chip step 10), the logo macro, and
-the posit testbench reference model. A design hardened as a TT tile works by
+TinyTapeout packaging and precheck (aion_chip step 10) and the logo macro.
+The posit design and its testbench, with the Stillwater Universal reference
+model, are in `designs/posit_alu/`. A design hardened as a TT tile works by
 setting `def_template` in `design.toml` and the TT keys in its LibreLane
 template; the precheck itself is not wired in.

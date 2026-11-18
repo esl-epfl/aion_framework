@@ -10,8 +10,9 @@ src/cve2/                    upstream RTL, vendored unmodified (VENDOR.md: commi
 src/rtl/cve2_wrap.sv         top level: cve2_top with flat ports, sideband tied off
 src/rtl/cve2_clock_gate.sv   replaces upstream's sim-only gate: sg13g2_slgcp_1 in synthesis
 tb/test_cve2_wrap.py         cocotb: hello world (RTL and every netlist)
-constraints/cve2_wrap.sdc    timing constraints (25 ns)
+constraints/cve2_wrap.sdc    timing constraints (1000 ns)
 librelane/config.json        LibreLane template (+ per-mode overlays)
+pdk_extension/               hand-designed cells for this design (git-ignored)
 ```
 
 The testbench assembles a small program (no RISC-V toolchain needed),
@@ -27,4 +28,10 @@ make flow DESIGN=cve2                 # all nine steps
 ```
 
 `DIE_AREA` (800x800 µm) is an estimate made before synthesis. Resize it
-once `1_synth` reports the cell area.
+once `1_synth` reports the cell area. The clock is 1000 ns (1 MHz), in the SDC and
+in `CLOCK_PERIOD`; change both together.
+
+`design.toml` keeps `ELITE_COUNT = 1` (one mined cell for step 6 to draw) and
+leaves XOR/XNOR/MUX cells out of mining (`MINE_EXCLUDE`).
+
+Everything the flow produces lands in `runs/cve2/<tag>/`.

@@ -12,6 +12,7 @@ src/sha256/                  upstream RTL, vendored unmodified (VENDOR.md: commi
 tb/test_sha256.py            cocotb: upstream's tb_sha256.v, ported (RTL and every netlist)
 constraints/sha256.sdc       timing constraints (20 ns)
 librelane/config.json        LibreLane template (+ per-mode overlays)
+pdk_extension/               hand-designed cells for this design (git-ignored)
 ```
 
 The testbench is upstream's `tb_sha256.v` test cases, through the same
