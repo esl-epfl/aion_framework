@@ -1,0 +1,59 @@
+# ================================================================
+#  posit_alu -- design description for the AION framework
+#  Every path is relative to this directory.
+# ================================================================
+
+[design]
+name = "posit_alu"
+top = "tt_um_aion"                      # top-level module / entity
+language = "vhdl"            # vhdl | verilog | systemverilog
+pdk = "ihp-sg13g2"
+
+[sources]
+# In compile order (it matters for VHDL).  Globs expand sorted, in place.
+rtl = [
+  "src/rtl/add.vhd",
+  "src/rtl/mult.vhd",
+  "src/rtl/add_16.vhd",
+  "src/rtl/mult_16.vhd",
+  "src/rtl/posit_compare.vhd",
+  "src/rtl/posit_bitwise.vhd",
+  "src/rtl/posit_alu.vhd",
+  "src/rtl/aion_soc.vhd",
+  "src/rtl/aion_interface.vhd",
+  "src/rtl/tt_um_aion.vhd",
+]
+# include_dirs = ["src/include"]  # Verilog/SV only
+# defines = { SYNTHESIS = 1 }     # Verilog/SV only
+# vhdl_std = "08"                 # VHDL only
+
+[tb]
+# cocotb testbench, tb/<module>.py.  It drives the top-level ports only, so
+# the same file runs on the RTL and on every netlist the flow produces.
+dir = "tb"
+module = "aion_test"
+rtl_sim = "ghdl"              # ghdl | nvc (VHDL), icarus | verilator (Verilog/SV)
+gate_sim = "icarus"               # icarus | verilator  (post-PnR with SDF is always icarus)
+
+[librelane]
+# The LibreLane template the flow builds every run's config.json from, and
+# the timing constraints.  The flow adds the sources, the SDC and the cells.
+config = "librelane/config.json"
+sdc = "constraints/tt_um_aion.sdc"
+# pin_order = "librelane/pin_order.cfg"
+# def_template = "librelane/template.def"     # fixes die + pins (e.g. TinyTapeout)
+
+[layout]
+# The drawing agent for this design: one directory under agents/.
+# `make flow DESIGN=posit_alu AGENT=<profile>` overrides it for one run.
+# agent = "claude-opus"    # default: aion.toml [defaults] agent
+
+[flow]
+# Any flow setting, for this design only (`make config DESIGN=posit_alu` lists them).
+# Cells the pattern miner keeps as leaves (globs on the PDK cell name; every
+# drive strength matches).  XOR/XNOR/MUX: a drawn pair of them is no narrower
+# than the PDK cells it replaces.  [] mines every combinational cell.
+MINE_EXCLUDE = ["*xor*", "*xnor*", "*mux*"]
+# ELITE_COUNT = 10
+# MAX_SIZE = 2
+# DRAW_JOBS = 2
