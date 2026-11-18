@@ -1,9 +1,23 @@
 # AION framework
 
-**AI-Optimized Netlist-to-Layout**, for any design: mine the recurring logic
-of a synthesized netlist, turn each pattern into one transistor-level cell,
-have an agent draw its layout, harden the design with those cells, and measure
-the result against the same design built from PDK cells only.
+**AI-Optimized Netlist-to-Layout**, for any design: extend the PDK's
+standard-cell library with cells that design needs, have an agent draw their
+layout, harden the design with those cells, and measure the result against
+the same design built from PDK cells only.
+
+The library is extended along two paths:
+
+* **function-driven**: rank the logic functions the synthesized netlist
+  computes (k-input cuts grouped by NPN class), design new or improved cells
+  for the best ones, and re-synthesize so the mapper can use them;
+* **pattern-driven**: mine the mapped netlist for recurring clusters of
+  cells, merge each selected cluster into one transistor-level cell, and
+  rewrite the netlist with it, formally proven equivalent.
+
+Cells from both paths go through the same cell pipeline: transistor netlist
+and exhaustive proof, an LLM-drawn layout gated by DRC/LVS/routability, then
+characterization and comparison against the PDK cells they replace. The model
+draws, the tools decide.
 
 The tools live in the [`aion_flow`](aion_flow/) submodule (aion_opt,
 aion_char, aion_minimizer, aion_layout_claude). This repository is the driver:
@@ -16,7 +30,7 @@ aion.toml             framework settings (container, default PDK/agent/tag)
 aion/                 the flow handler (python -m aion)
   steps/              one module per flow step
   agent/              agent profiles, the turn runner, the draw loop
-  ext/                the functional cell extractor (PDK extension)
+  ext/                the function-driven path: function ranking, extension cells
   tools/              helpers: LibreLane cells, registry, Liberty merge, reports
 agents/<name>/        drawing-agent profiles: agent.toml, prompts/, skills/, ...
 designs/<name>/       designs: design.toml, src/, tb/, constraints/, librelane/
@@ -80,15 +94,20 @@ flow uses unless `design.toml` points elsewhere. For every run the flow writes
 
 | # | Step | What it does | Where |
 |---|------|--------------|-------|
-| 1 | `1_synth` | RTL → netlist + pre-PnR STA, post-synthesis simulation | container |
-| 2 | `2_pattern_extraction` | mine recurring subgraphs, emit a cell library, keep `ELITE_COUNT` | host |
-| 3 | `3_rewrite` | substitute the cells, **LEC**, re-simulate | host + container |
+| 1 | `1_synth` | RTL → netlist (PDK + this design's function-driven cells) + pre-PnR STA, post-synthesis simulation | container |
+| 2 | `2_pattern_extraction` | pattern mining: recurring clusters, emit a cell library, keep `ELITE_COUNT` | host |
+| 3 | `3_rewrite` | substitute the merged cells, **LEC**, re-simulate | host + container |
 | 4 | `4_characterization` | exhaustive SV + SPICE testbenches per cell | container |
 | 5 | `5_gate_minimization` | each cell as one CMOS stack, proved in SPICE | container |
-| 6 | `6_layout_drawing` | **the agent** draws each cell; DRC, LVS, PEX, characterize, publish | host + container |
+| 6 | `6_layout_drawing` | **the agent** draws each cell; DRC, LVS, PEX, characterize, compare, publish | host + container |
 | 7 | `7_pnr` | harden the rewritten netlist with the drawn cells, SDF simulation | container |
 | 8 | `8_render` | the die, and where the AION cells landed | host |
 | 9 | `9_report` | against the PDK-only baseline (`make baseline`) | host (+ container to build the baseline) |
+
+The nine steps are the **pattern-driven path** plus implementation. The
+**function-driven path** runs before them, through the `ext-*` targets
+([below](#the-function-driven-path-pdk-extension)): once a design has
+published extension cells, step 1 synthesizes against the extended library.
 
 `make flow DESIGN=<d> STEP=3`, `STEP=2..5`, `STEP=6-`. Every step reads only
 what it declares and writes only under its own directory; `coherence.json`
@@ -128,7 +147,7 @@ given lives in one directory per profile:
 ```
 agents/<name>/
   agent.toml        backend, model, effort, turns, timeout, cost caps, tools, extends=
-  prompts/          layout.md (a mined cell), ext_layout.md (an extension cell)
+  prompts/          layout.md (a pattern-driven cell), ext_layout.md (a function-driven cell)
   skills/<skill>/   Claude Code skills installed into the session (aion-layout)
   settings.json     Claude Code settings: the post-edit cell-check hook
   CLAUDE.md         standing instructions
@@ -165,8 +184,8 @@ session id, turns, cost and duration:
 |------|-------|---------|
 | authored inputs | `designs/`, `agents/`, `pdks/`, `templates/` | yes |
 | one run | `runs/<design>/<tag>/` (`TAG=` picks another) | no |
-| drawn mined cells (generators, views, registry) | `library/<pdk>/`: shared by every design | no |
-| hand-designed cells | `designs/<d>/pdk_extension/`: one design only | no (`git add -f`) |
+| drawn pattern-driven cells (generators, views, registry) | `library/<pdk>/`: shared by every design | no |
+| function-driven (extension) cells | `designs/<d>/pdk_extension/`: one design only | no (`git add -f`) |
 
 ```
 runs/<design>/<tag>/
@@ -192,13 +211,25 @@ make cells                                    # the shared library, with provena
 Nothing deletes without `YES=1`. Nothing in `clean-run`/`gc` touches
 `library/` or a design's `pdk_extension/`.
 
-## The functional cell extractor (PDK extension)
+## The function-driven path (PDK extension)
 
-The step-2 miner is structural: it merges cells that already sit next to each
-other. The extractor looks for **functions**: every gate's k-input cuts, their
-truth tables grouped by NPN class, each occurrence priced by the area one
-cell of that function would free. A full adder is the typical result (XOR3 +
-MAJ3 on the same leaves). The winners become hand-designed cells, per design:
+The pattern-driven path (steps 2–3) is structural: it merges cells that
+already sit next to each other, so a function the mapper built in two shapes
+shows up as two unrelated clusters. The function-driven path ranks the
+**functions** themselves: every gate's k-input cuts (k ≤ 4), their truth
+tables grouped by NPN class, each occurrence priced by the area of the
+fanout-free cone it would free. Classes on the same leaves are ranked jointly,
+so a full adder (XOR3 + MAJ3) shows up as one multi-output candidate. The
+cells are selected by hand from the ranking and fall in two categories:
+
+* **(i) new**: a function with no PDK counterpart (e.g. an inverting MAJ3),
+  compared against the abutted PDK cells that build it;
+* **(ii) improved**: a function the PDK has but the mapper avoids (e.g. MUX2
+  built from generic gates), redesigned in another logic style
+  (transmission-gate, pass-transistor) and compared against that PDK cell.
+
+They are authored per design, and their instances stay leaves when step 2
+mines the re-synthesized netlist:
 
 ```bash
 make ext-rank  DESIGN=<d> ARGS="--new-only --explain 3"  # rank the candidates
@@ -208,9 +239,9 @@ make ext-build DESIGN=<d> CELL=AION_maj3i_1 AGENT=claude-opus-max
 make flow      DESIGN=<d>                                 # synthesis now maps onto it
 ```
 
-`ext-build` runs the 3-way SPICE proof, the shared draw loop, post-layout
-characterization, and publishes the views next to the sources once the cell
-wins its comparison (`ACCEPT_DELAY_LOSS=<pct>` for a smaller-but-slower cell).
+`ext-build` is the cell pipeline for one cell: the 3-way SPICE proof,
+the shared draw loop, post-layout characterization, and it publishes the views
+next to the sources once the cell wins its comparison (`ACCEPT_DELAY_LOSS=<pct>` for a smaller-but-slower cell).
 `FROM=layout|post-layout` resumes a build part-way, `ONLY=publish` re-publishes
 the last verdict. `make ext-lib DESIGN=<d>` splices the design's extension
 cells into its run's Liberty and tech dictionary (step 1 does this by itself;
@@ -238,11 +269,3 @@ mount = "/foss/designs/aion"
 
 The flow checks both the container and the mount before the first
 containerised step, and says which one is missing.
-
-## Not ported from aion_chip
-
-TinyTapeout packaging and precheck (aion_chip step 10) and the logo macro.
-The posit design and its testbench, with the Stillwater Universal reference
-model, are in `designs/posit_alu/`. A design hardened as a TT tile works by
-setting `def_template` in `design.toml` and the TT keys in its LibreLane
-template; the precheck itself is not wired in.
