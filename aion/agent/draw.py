@@ -10,7 +10,10 @@
 #
 #  The agent only ever writes the generator.  Every graded step runs here, on
 #  the host, and what the agent says it did is never the verdict: the verdict
-#  is the RESULT: line of `make verify`.  The file on disk is the only thing
+#  is the RESULT: line of `make verify`.  LVS grades the layout against the
+#  target netlist, so a turn that edits that netlist is caught here: the
+#  netlist is hashed before the first turn and after every turn, and a turn
+#  that changed it fails the cell, with the original restored.  The file on disk is the only thing
 #  that counts -- a turn that timed out after writing a complete generator has
 #  done the work, one that exited cleanly without touching it has not.
 #
@@ -51,6 +54,8 @@ class DrawTask:
     #: Extra prompt text, e.g. the hand-authored floorplan of an extension cell.
     sections: str = ""
     turns: list = field(default_factory=list)
+    #: The netlist as it was before anything was drawn against it.
+    guard: Optional["NetlistGuard"] = None
 
     @property
     def final(self) -> Path:
@@ -86,6 +91,56 @@ def fingerprint(path: Path) -> Optional[str]:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
         return None
+
+
+class NetlistModified(StepFailed):
+    """A drawing turn changed the netlist LVS grades the layout against."""
+
+
+@dataclass
+class NetlistGuard:
+    """The LVS reference netlist, frozen before a cell is drawn against it.
+
+    LVS passes whenever the layout matches the netlist file, so an agent that
+    edits the netlist can make any layout "verify".  The guard keeps the
+    original bytes, so a change can be undone as well as detected.
+    """
+
+    path: Path
+    original: bytes
+    sha256: str
+
+    @classmethod
+    def take(cls, path: Path) -> "NetlistGuard":
+        data = Path(path).read_bytes()
+        return cls(Path(path), data, hashlib.sha256(data).hexdigest())
+
+    def changed(self) -> bool:
+        return fingerprint(self.path) != self.sha256
+
+    def restore(self, keep_dir: Path) -> Optional[Path]:
+        """Put the original back; keep the edited file, if any, for inspection."""
+        kept = None
+        if self.path.is_file():
+            keep_dir.mkdir(parents=True, exist_ok=True)
+            kept = keep_dir / f"{self.path.name}.tampered"
+            shutil.copy2(self.path, kept)
+        self.path.write_bytes(self.original)
+        return kept
+
+    def enforce(self, cell: str, keep_dir: Path, by: str) -> None:
+        """Raise NetlistModified, original restored, if the netlist changed."""
+        if not self.changed():
+            return
+        kept = self.restore(keep_dir)
+        fail(f"{cell}: {by} modified the LVS reference netlist "
+             f"{workspace.rel(self.path)} — original restored")
+        if kept is not None:
+            note(f"  the edited copy is kept as {workspace.rel(kept)}")
+        raise NetlistModified(
+            f"{by} modified the LVS reference netlist {workspace.rel(self.path)}; "
+            f"the original is restored"
+            + (f" and the edited copy kept as {workspace.rel(kept)}" if kept else ""), 1)
 
 
 def turn_log(cell: str, target: str, turn: Optional[int]) -> str:
@@ -143,6 +198,8 @@ class Drawer:
             info(f"{task.cell}: would run up to {profile.max_turns} agent turn(s) "
                  f"with {profile.name}")
             return None
+        if task.guard is None:
+            task.guard = NetlistGuard.take(task.netlist)
         verdict = None
         idle = 0
         spent = 0.0
@@ -164,7 +221,11 @@ class Drawer:
                               evidence, iteration)
             spent += turn.cost_usd or 0.0
             changed = fingerprint(task.generator) != before
-            self._log_turn(task, iteration, turn, verdict, changed)
+            netlist_changed = task.guard.changed()
+            self._log_turn(task, iteration, turn, verdict, changed, netlist_changed)
+            if netlist_changed:
+                self._save(task, "RESULT: FAIL (netlist modified)", netlist_modified=True)
+                task.guard.enforce(task.cell, task.build, f"agent turn {iteration}")
 
             if not changed:
                 idle += 1
@@ -246,18 +307,21 @@ class Drawer:
         return turn
 
     def _log_turn(self, task: DrawTask, iteration: int, turn: claude.AgentTurn,
-                  verdict_before: Optional[str], changed: bool) -> None:
+                  verdict_before: Optional[str], changed: bool,
+                  netlist_changed: bool = False) -> None:
         entry = {"cell": task.cell, "kind": task.kind, "turn": iteration,
                  "at": now(), "profile": self.profile.name,
                  "digest": self.profile.digest(), "verdict_before": verdict_before,
-                 "generator_changed": changed, **turn.record()}
+                 "generator_changed": changed, "netlist_changed": netlist_changed,
+                 **turn.record()}
         task.turns.append(entry)
         usage = self.ws.agent_dir / "usage.jsonl"
         usage.parent.mkdir(parents=True, exist_ok=True)
         with open(usage, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(entry) + "\n")
 
-    def _save(self, task: DrawTask, verdict: Optional[str]) -> None:
+    def _save(self, task: DrawTask, verdict: Optional[str],
+              netlist_modified: bool = False) -> None:
         previous = []
         try:
             previous = json.loads(task.record_file.read_text()).get("history", [])
@@ -270,6 +334,9 @@ class Drawer:
             "model": self.profile.model, "effort": self.profile.effort,
             "generator": workspace.rel(task.generator),
             "generator_sha256": fingerprint(task.generator),
+            "netlist": workspace.rel(task.netlist),
+            "netlist_sha256": task.guard.sha256 if task.guard else fingerprint(task.netlist),
+            "netlist_modified": netlist_modified,
             "turns": len(task.turns), "cost_usd": round(cost, 4),
             "finished": now(), "sessions": task.turns,
             "history": previous[-20:] + ([{"finished": now(), "verdict": verdict,
@@ -290,7 +357,8 @@ def provenance(task_build: Path) -> dict:
         return {"drawn_by": "unknown (no agent record — drawn by hand?)"}
     return {key: record.get(key) for key in
             ("profile", "digest", "model", "effort", "turns", "cost_usd",
-             "generator_sha256", "finished", "history")}
+             "generator_sha256", "netlist_sha256", "finished", "history")}
 
 
-__all__ = ["DrawTask", "Drawer", "fingerprint", "provenance", "turn_log"]
+__all__ = ["DrawTask", "Drawer", "NetlistGuard", "NetlistModified", "fingerprint",
+           "provenance", "turn_log"]

@@ -40,7 +40,7 @@ from collect_cells import LIB_CORNERS, check_lef, published_lib_problem
 
 from .. import workspace
 from ..agent import profile as agent_profile
-from ..agent.draw import Drawer, DrawTask, provenance, turn_log
+from ..agent.draw import Drawer, DrawTask, NetlistGuard, provenance, turn_log
 from ..coherence import BLOCKED, now
 from ..pex import PexError, write_wrapper
 from ..runner import terminate_all
@@ -174,6 +174,10 @@ class LayoutDrawingStep(Step):
                 f"can rename it."))
         if not baseline.exists() and not self.dry_run:
             return CellOutcome(cell, "failed", detail="missing baseline netlist")
+        if not self.dry_run:
+            # Frozen before anything is drawn against it; checked after every
+            # agent turn and once more before the cell is published.
+            task.guard = NetlistGuard.take(netlist)
 
         # ---- the generator: scaffold it once, never overwrite a drawing.
         if not task.generator.exists():
@@ -196,6 +200,8 @@ class LayoutDrawingStep(Step):
             return CellOutcome(cell, "awaiting_draw", verdict=verdict,
                                detail="layout does not verify yet")
         ok(f"{cell}: {verdict}")
+        if task.guard is not None:
+            task.guard.enforce(cell, task.build, "something during drawing")
         if key is not None:
             _remember(ws, cell, key)
 
